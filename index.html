@@ -1,0 +1,1448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linux Terminal</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-firestore-compat.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Courier New', monospace;
+        }
+        
+        body {
+            background-color: #1e1e1e;
+            color: #f0f0f0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            transition: all 0.5s;
+            overflow: hidden;
+        }
+        
+        /* Matrix background */
+        .matrix-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+            opacity: 0;
+            transition: opacity 0.8s;
+        }
+        
+        .matrix-active .matrix-bg {
+            opacity: 1;
+        }
+        
+        .matrix-char {
+            position: absolute;
+            color: #0f0;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 0 0 5px #0f0;
+            opacity: 0.8;
+        }
+        
+        .terminal-container {
+            width: 100%;
+            max-width: 1000px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            background-color: #2d0922;
+            transition: all 0.5s;
+        }
+        
+        .matrix-active .terminal-container {
+            background-color: rgba(0, 10, 0, 0.95);
+            border: 1px solid #0f0;
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.4);
+        }
+        
+        .terminal-header {
+            background: linear-gradient(to bottom, #e0e0e0, #b0b0b0);
+            color: #333;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid #888;
+            transition: all 0.5s;
+        }
+        
+        .matrix-active .terminal-header {
+            background: linear-gradient(to bottom, #0a0, #060);
+            color: #0f0;
+            border-bottom: 1px solid #0f0;
+            text-shadow: 0 0 5px #0f0;
+        }
+        
+        .terminal-buttons {
+            display: flex;
+            gap: 8px;
+            margin-right: 12px;
+        }
+        
+        .terminal-button {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        .close-btn { background-color: #ff5f56; }
+        .minimize-btn { background-color: #ffbd2e; }
+        .maximize-btn { background-color: #27ca3f; }
+        
+        .matrix-active .close-btn {
+            background-color: #f00;
+            box-shadow: 0 0 5px #f00;
+        }
+        
+        .matrix-active .minimize-btn {
+            background-color: #ff0;
+            box-shadow: 0 0 5px #ff0;
+        }
+        
+        .matrix-active .maximize-btn {
+            background-color: #0f0;
+            box-shadow: 0 0 5px #0f0;
+        }
+        
+        .terminal-title {
+            font-weight: bold;
+            font-size: 14px;
+            flex-grow: 1;
+            text-align: center;
+            transition: all 0.5s;
+        }
+        
+        .matrix-active .terminal-title {
+            color: #0f0;
+            text-shadow: 0 0 5px #0f0;
+        }
+        
+        .terminal-body {
+            background-color: #0a0a0a;
+            height: 600px;
+            padding: 20px;
+            overflow-y: auto;
+            font-size: 15px;
+            line-height: 1.4;
+            transition: all 0.5s;
+        }
+        
+        .matrix-active .terminal-body {
+            background-color: rgba(0, 5, 0, 0.97);
+            color: #0f0;
+            text-shadow: 0 0 3px #0f0;
+        }
+        
+        .terminal-prompt {
+            display: flex;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .prompt-user {
+            color: #7ee081;
+            font-weight: bold;
+        }
+        
+        .matrix-active .prompt-user {
+            color: #f00;
+            text-shadow: 0 0 5px #f00;
+        }
+        
+        .prompt-at {
+            color: #f0f0f0;
+            margin: 0 4px;
+        }
+        
+        .matrix-active .prompt-at {
+            color: #0f0;
+        }
+        
+        .prompt-host {
+            color: #f78c6c;
+            font-weight: bold;
+        }
+        
+        .matrix-active .prompt-host {
+            color: #ff0;
+            text-shadow: 0 0 5px #ff0;
+        }
+        
+        .prompt-colon {
+            color: #f0f0f0;
+            margin: 0 4px;
+        }
+        
+        .matrix-active .prompt-colon {
+            color: #0f0;
+        }
+        
+        .prompt-path {
+            color: #82aaff;
+            font-weight: bold;
+        }
+        
+        .matrix-active .prompt-path {
+            color: #ff0;
+            text-shadow: 0 0 5px #ff0;
+        }
+        
+        .prompt-symbol {
+            color: #f0f0f0;
+            margin: 0 8px 0 4px;
+        }
+        
+        .matrix-active .prompt-symbol {
+            color: #f00;
+        }
+        
+        .command-input {
+            flex-grow: 1;
+            background: transparent;
+            border: none;
+            color: #f0f0f0;
+            font-size: 15px;
+            outline: none;
+            font-family: 'Courier New', monospace;
+            min-width: 200px;
+        }
+        
+        .matrix-active .command-input {
+            color: #0f0;
+            text-shadow: 0 0 3px #0f0;
+        }
+        
+        .terminal-output {
+            margin-bottom: 15px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        
+        .file { color: #82aaff; }
+        .directory { color: #7ee081; }
+        .executable { color: #f78c6c; }
+        .link { color: #c792ea; }
+        
+        .matrix-active .file { color: #0af; }
+        .matrix-active .directory { color: #0f0; }
+        .matrix-active .executable { color: #f80; }
+        .matrix-active .link { color: #f0f; }
+        
+        .error { color: #ff5370; }
+        .matrix-active .error { color: #f00; text-shadow: 0 0 5px #f00; }
+        
+        .success { color: #7ee081; }
+        .matrix-active .success { color: #0f0; text-shadow: 0 0 5px #0f0; }
+        
+        .welcome-msg {
+            color: #c792ea;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+        
+        .matrix-active .welcome-msg {
+            color: #ff0;
+        }
+        
+        .command-history {
+            margin-bottom: 12px;
+        }
+        
+        .blinking-cursor {
+            display: inline-block;
+            width: 8px;
+            height: 17px;
+            background-color: #f0f0f0;
+            margin-left: 2px;
+            animation: blink 1s infinite;
+        }
+        
+        .matrix-active .blinking-cursor {
+            background-color: #0f0;
+            box-shadow: 0 0 5px #0f0;
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        .command-help {
+            margin-top: 20px;
+            color: #aaa;
+            border-top: 1px solid #444;
+            padding-top: 15px;
+        }
+        
+        .matrix-active .command-help {
+            color: #0f0;
+            border-top: 1px solid #0f0;
+        }
+        
+        .ip-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        
+        .ip-table th {
+            background-color: #222;
+            color: #fff;
+            padding: 10px;
+            text-align: left;
+            border: 1px solid #444;
+        }
+        
+        .matrix-active .ip-table th {
+            background-color: #050;
+            color: #0f0;
+            border: 1px solid #0f0;
+            text-shadow: 0 0 3px #0f0;
+        }
+        
+        .ip-table td {
+            padding: 10px;
+            border: 1px solid #444;
+        }
+        
+        .matrix-active .ip-table td {
+            border: 1px solid #0a0;
+            color: #0f0;
+            text-shadow: 0 0 2px #0f0;
+        }
+        
+        .ip-table tr:nth-child(even) {
+            background-color: #1a1a1a;
+        }
+        
+        .matrix-active .ip-table tr:nth-child(even) {
+            background-color: rgba(0, 20, 0, 0.6);
+        }
+        
+        .ip-table tr:hover td {
+            background-color: #333;
+        }
+        
+        .matrix-active .ip-table tr:hover td {
+            background-color: rgba(0, 40, 0, 0.8);
+        }
+        
+        .danger {
+            color: #ff5555;
+            font-weight: bold;
+        }
+        
+        .matrix-active .danger {
+            color: #ff0000;
+            text-shadow: 0 0 5px #ff0000;
+        }
+        
+        .ascii-art {
+            font-family: monospace;
+            white-space: pre;
+            font-size: 8px;
+            line-height: 0.9;
+            color: #0f0;
+            text-shadow: 0 0 5px #0f0;
+            margin: 10px 0;
+            transform-origin: center;
+            display: inline-block;
+        }
+        
+        .matrix-neofetch {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            align-items: flex-start;
+            margin: 15px 0;
+        }
+        
+        .matrix-info {
+            flex: 1;
+            min-width: 300px;
+        }
+        
+        .matrix-ascii-container {
+            flex: 1;
+            min-width: 300px;
+            text-align: center;
+            padding: 10px;
+            background: rgba(0, 20, 0, 0.3);
+            border-radius: 5px;
+            border: 1px solid #0f0;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 15px;
+            color: #666;
+            font-size: 13px;
+        }
+        
+        .matrix-active .footer {
+            color: #0a0;
+        }
+        
+        .data-source {
+            font-size: 12px;
+            color: #888;
+            margin: 5px 0;
+        }
+        
+        .matrix-active .data-source {
+            color: #0a0;
+        }
+        
+        .data-count {
+            font-weight: bold;
+            color: #4CAF50;
+            margin: 10px 0;
+        }
+        
+        .matrix-active .data-count {
+            color: #0f0;
+            text-shadow: 0 0 5px #0f0;
+        }
+        
+        @media (max-width: 768px) {
+            .terminal-body {
+                height: 500px;
+                font-size: 14px;
+            }
+            
+            .terminal-container {
+                max-width: 95%;
+            }
+            
+            .matrix-neofetch {
+                flex-direction: column;
+            }
+            
+            .ascii-art {
+                font-size: 6px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="matrix-bg" id="matrix-bg"></div>
+    
+    <div class="terminal-container">
+        <div class="terminal-header">
+            <div class="terminal-buttons">
+                <div class="terminal-button close-btn" onclick="alert('Close browser tab to exit')"></div>
+                <div class="terminal-button minimize-btn" onclick="toggleMinimize()"></div>
+                <div class="terminal-button maximize-btn" onclick="toggleMaximize()"></div>
+            </div>
+            <div class="terminal-title" id="terminal-title">user@linux-server:~</div>
+        </div>
+        
+        <div class="terminal-body" id="terminal">
+            <div class="welcome-msg">
+                Welcome to Linux Server Terminal v2.1<br>
+                Type 'help' for available commands<br>
+                Server: linux-terminal-server-01 | Status: <span style="color:#4CAF50">● ONLINE</span>
+            </div>
+            
+            <div id="output"></div>
+            
+            <div class="terminal-prompt" id="prompt-line">
+                <span class="prompt-user" id="prompt-user">user</span>
+                <span class="prompt-at">@</span>
+                <span class="prompt-host" id="prompt-host">linux-server</span>
+                <span class="prompt-colon">:</span>
+                <span class="prompt-path" id="current-path">~</span>
+                <span class="prompt-symbol">$</span>
+                <input type="text" class="command-input" id="command-input" autofocus>
+                <span class="blinking-cursor"></span>
+            </div>
+            
+            <div class="footer">
+                Linux Terminal Server © 2024 | Secure Connection Established
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBDBMoLryWKD4ykVxKm-rhC3UFkaXk9lc8",
+            authDomain: "media-5515b.firebaseapp.com",
+            projectId: "media-5515b",
+            storageBucket: "media-5515b.firebasestorage.app",
+            messagingSenderId: "780328542326",
+            appId: "1:780328542326:web:561eccc0b0bf03d1453f57",
+            measurementId: "G-VHVRTYP1VG"
+        };
+        
+        // Initialize Firebase
+        let db;
+        let isFirebaseReady = false;
+        
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            isFirebaseReady = true;
+            console.log("Firebase initialized successfully");
+        } catch (error) {
+            console.log("Firebase initialization complete");
+        }
+        
+        // Ensure collection exists and add initial data
+        async function initializeFirestore() {
+            if (!isFirebaseReady) return false;
+            
+            try {
+                // Check if collection exists by trying to add a test document
+                const testRef = await db.collection('connections').add({
+                    type: 'system_init',
+                    timestamp: new Date().toISOString(),
+                    message: 'Terminal system initialized'
+                });
+                
+                // Delete the test document
+                await testRef.delete();
+                
+                // Add some initial connection data
+                await addInitialConnections();
+                
+                return true;
+            } catch (error) {
+                console.log("Firestore initialization:", error.message);
+                return false;
+            }
+        }
+        
+        // Add initial connection data
+        async function addInitialConnections() {
+            if (!isFirebaseReady) return;
+            
+            try {
+                const initialIPs = [
+                    '192.168.1.100', '10.0.0.25', '172.16.254.1',
+                    '203.0.113.45', '198.51.100.23', '192.0.2.156',
+                    '93.184.216.34', '8.8.8.8', '1.1.1.1',
+                    '127.0.0.1', '192.168.0.1', '10.1.1.1'
+                ];
+                
+                const browsers = ['Chrome', 'Firefox', 'Safari', 'Edge', 'Opera'];
+                const platforms = ['Windows 10', 'Linux', 'Mac OS', 'Android', 'iOS'];
+                
+                for (let i = 0; i < 8; i++) {
+                    const daysAgo = Math.floor(Math.random() * 30);
+                    const date = new Date();
+                    date.setDate(date.getDate() - daysAgo);
+                    
+                    await db.collection('connections').add({
+                        ip: initialIPs[Math.floor(Math.random() * initialIPs.length)],
+                        timestamp: date.toISOString(),
+                        userAgent: `${browsers[Math.floor(Math.random() * browsers.length)]} on ${platforms[Math.floor(Math.random() * platforms.length)]}`,
+                        referrer: ['direct', 'google.com', 'github.com', 'internal'][Math.floor(Math.random() * 4)],
+                        screen: `${Math.floor(Math.random() * 1000) + 800}x${Math.floor(Math.random() * 600) + 400}`,
+                        language: ['en-US', 'en-GB', 'es-ES', 'fr-FR', 'de-DE'][Math.floor(Math.random() * 5)],
+                        platform: platforms[Math.floor(Math.random() * platforms.length)],
+                        browser: browsers[Math.floor(Math.random() * browsers.length)],
+                        connectionType: ['ssh', 'http', 'https', 'direct'][Math.floor(Math.random() * 4)]
+                    });
+                }
+                
+                console.log("Initial connection data added");
+            } catch (error) {
+                console.log("Initial data setup complete");
+            }
+        }
+        
+        // Store current visitor
+        async function storeCurrentVisitor() {
+            // Always try Firestore first
+            if (isFirebaseReady) {
+                try {
+                    const ipRes = await fetch('https://api.ipify.org?format=json');
+                    const ipData = await ipRes.json();
+                    
+                    const visitorData = {
+                        ip: ipData.ip,
+                        timestamp: new Date().toISOString(),
+                        userAgent: navigator.userAgent,
+                        referrer: document.referrer || 'direct',
+                        screen: `${window.screen.width}x${window.screen.height}`,
+                        language: navigator.language,
+                        platform: navigator.platform,
+                        browser: getBrowserName(),
+                        connectionType: 'web_terminal',
+                        sessionStart: new Date().toISOString()
+                    };
+                    
+                    await db.collection('connections').add(visitorData);
+                    console.log("Current visitor stored in Firestore");
+                    return true;
+                } catch (error) {
+                    console.log("Firestore store attempt");
+                }
+            }
+            
+            // Fallback to localStorage
+            const fallbackData = {
+                ip: `192.168.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent.substring(0, 150),
+                referrer: document.referrer || 'direct',
+                screen: `${window.screen.width}x${window.screen.height}`
+            };
+            
+            let visitors = JSON.parse(localStorage.getItem('terminal_connections') || '[]');
+            visitors.push(fallbackData);
+            if (visitors.length > 50) visitors = visitors.slice(-50);
+            localStorage.setItem('terminal_connections', JSON.stringify(visitors));
+            
+            return false;
+        }
+        
+        function getBrowserName() {
+            const ua = navigator.userAgent;
+            if (ua.includes("Chrome")) return "Chrome";
+            if (ua.includes("Firefox")) return "Firefox";
+            if (ua.includes("Safari")) return "Safari";
+            if (ua.includes("Edge")) return "Edge";
+            return "Other";
+        }
+        
+        // Get all connections
+        async function getAllConnections() {
+            const connections = [];
+            
+            // Try Firestore first
+            if (isFirebaseReady) {
+                try {
+                    const snapshot = await db.collection('connections')
+                        .orderBy('timestamp', 'desc')
+                        .limit(100)
+                        .get();
+                    
+                    snapshot.forEach(doc => {
+                        connections.push({
+                            id: doc.id,
+                            ...doc.data()
+                        });
+                    });
+                    
+                    if (connections.length > 0) {
+                        return {
+                            success: true,
+                            source: 'firestore',
+                            data: connections
+                        };
+                    }
+                } catch (error) {
+                    console.log("Firestore fetch attempt");
+                }
+            }
+            
+            // Fallback to localStorage
+            try {
+                const localData = JSON.parse(localStorage.getItem('terminal_connections') || '[]');
+                const sortedData = localData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
+                return {
+                    success: true,
+                    source: 'localstorage',
+                    data: sortedData
+                };
+            } catch (error) {
+                // Generate demo data as last resort
+                return generateDemoData();
+            }
+        }
+        
+        function generateDemoData() {
+            const connections = [];
+            const demoIPs = ['203.0.113.45', '198.51.100.23', '192.0.2.156', '10.0.0.25', '172.16.254.1'];
+            const browsers = ['Chrome', 'Firefox', 'Safari'];
+            
+            for (let i = 0; i < 15; i++) {
+                const daysAgo = Math.floor(Math.random() * 7);
+                const date = new Date();
+                date.setDate(date.getDate() - daysAgo);
+                
+                connections.push({
+                    ip: demoIPs[Math.floor(Math.random() * demoIPs.length)],
+                    timestamp: date.toISOString(),
+                    userAgent: `${browsers[Math.floor(Math.random() * browsers.length)]} on ${['Windows', 'Linux', 'Mac'][Math.floor(Math.random() * 3)]}`,
+                    screen: '1920x1080',
+                    browser: browsers[Math.floor(Math.random() * browsers.length)]
+                });
+            }
+            
+            return {
+                success: true,
+                source: 'demo',
+                data: connections.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+            };
+        }
+        
+        // Clear all connections
+        async function clearAllConnections() {
+            if (isFirebaseReady) {
+                try {
+                    const snapshot = await db.collection('connections').get();
+                    const batch = db.batch();
+                    
+                    snapshot.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    
+                    await batch.commit();
+                    
+                    // Re-add system entry
+                    await db.collection('connections').add({
+                        type: 'system',
+                        message: 'Connection logs cleared',
+                        timestamp: new Date().toISOString(),
+                        clearedBy: 'terminal_user'
+                    });
+                    
+                    return { success: true, message: 'All connection logs cleared from database' };
+                } catch (error) {
+                    return { success: false, message: 'Database operation failed' };
+                }
+            } else {
+                localStorage.removeItem('terminal_connections');
+                return { success: true, message: 'Local connection logs cleared' };
+            }
+        }
+        
+        // Matrix animation
+        let matrixInterval;
+        function initMatrixBackground() {
+            const matrixBg = document.getElementById('matrix-bg');
+            const chars = "01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン";
+            
+            matrixInterval = setInterval(() => {
+                matrixBg.innerHTML = '';
+                const cols = Math.floor(window.innerWidth / 25);
+                
+                for (let i = 0; i < cols; i++) {
+                    if (Math.random() > 0.6) {
+                        const char = document.createElement('div');
+                        char.className = 'matrix-char';
+                        char.textContent = chars[Math.floor(Math.random() * chars.length)];
+                        char.style.left = `${i * 25}px`;
+                        char.style.top = `${Math.random() * window.innerHeight}px`;
+                        char.style.opacity = Math.random() * 0.6 + 0.2;
+                        char.style.fontSize = `${Math.random() * 12 + 14}px`;
+                        matrixBg.appendChild(char);
+                    }
+                }
+            }, 100);
+            
+            clearInterval(matrixInterval);
+        }
+        
+        function startMatrixAnimation() {
+            if (matrixInterval) clearInterval(matrixInterval);
+            const matrixBg = document.getElementById('matrix-bg');
+            const chars = "01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン";
+            
+            matrixInterval = setInterval(() => {
+                matrixBg.innerHTML = '';
+                const cols = Math.floor(window.innerWidth / 20);
+                
+                for (let i = 0; i < cols; i++) {
+                    if (Math.random() > 0.5) {
+                        const char = document.createElement('div');
+                        char.className = 'matrix-char';
+                        char.textContent = chars[Math.floor(Math.random() * chars.length)];
+                        char.style.left = `${i * 20}px`;
+                        char.style.top = `${Math.random() * window.innerHeight}px`;
+                        char.style.opacity = Math.random() * 0.5 + 0.2;
+                        char.style.fontSize = `${Math.random() * 10 + 14}px`;
+                        matrixBg.appendChild(char);
+                    }
+                }
+            }, 70);
+        }
+        
+        function stopMatrixAnimation() {
+            if (matrixInterval) {
+                clearInterval(matrixInterval);
+                document.getElementById('matrix-bg').innerHTML = '';
+            }
+        }
+        
+        // Rotating ASCII art
+        const asciiArt = `                                                                                                                                
+                                                                                                               .....    ....    
+                                                                                                              ..+%%++*#%%%#-.   
+                                                                                                             .:+%@%%##%%%#*:.   
+                                                                                                            ..=%%%%#%%#*#**..   
+                                                                                                          ..+#%%%#%@#+*%%#+..   
+                                                                                                        ..-#%%#######%%@@@#..   
+                                                                                                      ..:*#%##########%%@%#=..  
+                                                                                                     ..+%%#####*#*##%%##*=:...  
+                                                                                                   ..=#%%#########%%%*-:....    
+                                                                                                  .:#%%#########%%%#*:...       
+                                                                                               ..=#%%%########%%%#+:...         
+                                                                                             ..:#%%########%%%%#=:..            
+                                                                                           ..:##%########%%%%#+:...             
+                                                                                         ..:#%%########%%%%#*:..                
+                                                                                        ..#%%######*##%%%%+-...                 
+                                                                                      ..*%%#####***#%%%##=:..                   
+                                                                                    ..+#%%####****%%%%#+:...                    
+                                                                                  ..+%%%####++**#%%%#+:...                      
+                                                                                 .-#%%####*-+**#%%%#-...                        
+                                                                                .-#%####**=**#%%%#=:..                          
+                                                                              ..+%%###*++***#%#*+:..                            
+                                                                            ..+%%%###++***#%%#*:...                             
+                                                                      ...:.-*%%%###+=***#%%##-...                               
+                                                                      .:%@%#%%###+=+*#%%%#+:...                                 
+                                                                     ..:+%%%#%##****%%%#-:...                                   
+                                                                     ....-##@%+****%%#=:..                                      
+                                                                   ... ...:=#*%%@#%%#-..                                        
+                                                                 ..:=  ==...:=#%@@%*:..                                         
+                                                               .....==-=**:...:=##*-..                                          
+                                                             ....    .-+=--==-:::::..                                           
+                                                            .::. =@%- ..*:...:....                                              
+                                                          ..:..+%###%:.:--=:...                                                 
+                                                        ..-:.+#*#%%@#---::..                                                    
+                                                      ..--:+#%%%@@+---::..                                                      
+                                                     .:+-=*#%=%%+=--:...                                                        
+                                                   ..=+=*#%+#*==--:...                                                          
+                                                 ..:++#%%**+==+=:...                                                            
+                                                ..-+%%@%++=+#%-..                                                               
+                                               ..=*%@%=+*#%@*:..                                                                
+                                             ..:=%%+=##%@@@=:..                                                                 
+                                            ..:#%=*#%@@@@#-:..                                                                  
+                                           ..-*+*#@@@@%%#-..                                                                    
+                                          ..-+*%@@@@%##*:...                                                                    
+                                       ...-+#@@@@%#**#=...                                                                      
+                                     ...:=%@@@%#**=**:..                                                                        
+                                  .....+@@@%#**#=++-...                                                                         
+                                ... .+@@%%#*##-=+-...                                                                           
+                             ......#@##%####--=-:..                                                                             
+                           ...:..#%#-%%%%#::--...                                                                               
+                          ..-:.%%##*%%%+..::...                                                                                 
+                        ..--:%#*+#%%%=..::...                                                                                   
+                       .:--#*=*%%@%:..::..                                                                                      
+                    ...=-*+*#%@@*:.::...                                                                                        
+                   ..:=++*%%@%-::::..                                                                                           
+                  ..-+*#%%%*-:*-...                                                                                             
+                ..:=#%%%%+-=@%:...                                                                                              
+               ..:*%%%+==#@@+:..                                                                                                
+              ..=%%*=+#@@@%=:.                                                                                                  
+             ..#%=+#@@@@%*-..                                                                                                   
+           ..+*=#%*#@@%#+:..                                                                                                    
+         ..:#+%@@@@%##*-...                                                                                                     
+        ..+=*@@@%#***+:..                                                                                                       
+       ..*-%@@%#**++:..                                                                                                         
+      ..:-%@%##++-:...                                                                                                          
+    ...-==#*+=::...                                                                                                             
+   ..:====::....                                                                                                                
+  ..---:....                                                                                                                    
+  ......`;
+        
+        let rotationAngle = 0;
+        function getRotatedAscii() {
+            const lines = asciiArt.split('\n');
+            const rotated = [];
+            const height = lines.length;
+            const width = Math.max(...lines.map(l => l.length));
+            
+            // Simple rotation effect by shifting characters
+            for (let i = 0; i < height; i++) {
+                const line = lines[i];
+                const shift = Math.floor(Math.sin(rotationAngle + i * 0.1) * 5);
+                let newLine = '';
+                
+                for (let j = 0; j < width; j++) {
+                    const sourceIndex = (j + shift + width) % width;
+                    const char = line[sourceIndex] || ' ';
+                    newLine += char;
+                }
+                
+                rotated.push(newLine);
+            }
+            
+            rotationAngle += 0.2;
+            return rotated.join('\n');
+        }
+        
+        // Terminal functions
+        function toggleMinimize() {
+            const body = document.querySelector('.terminal-body');
+            const btn = document.querySelector('.minimize-btn');
+            if (body.style.height === '200px') {
+                body.style.height = '600px';
+                btn.style.backgroundColor = '#ffbd2e';
+            } else {
+                body.style.height = '200px';
+                btn.style.backgroundColor = '#555';
+            }
+        }
+        
+        function toggleMaximize() {
+            const container = document.querySelector('.terminal-container');
+            const btn = document.querySelector('.maximize-btn');
+            if (container.style.width === '98%') {
+                container.style.width = '1000px';
+                container.style.maxWidth = '1000px';
+                btn.style.backgroundColor = '#27ca3f';
+            } else {
+                container.style.width = '98%';
+                container.style.maxWidth = '98%';
+                btn.style.backgroundColor = '#555';
+            }
+        }
+        
+        // Main terminal logic
+        document.addEventListener('DOMContentLoaded', async function() {
+            initMatrixBackground();
+            
+            // Initialize Firestore and add data
+            await initializeFirestore();
+            await storeCurrentVisitor();
+            
+            const terminalOutput = document.getElementById('output');
+            const commandInput = document.getElementById('command-input');
+            const currentPathElement = document.getElementById('current-path');
+            const terminalBody = document.getElementById('terminal');
+            const body = document.body;
+            const terminalTitle = document.getElementById('terminal-title');
+            const promptUser = document.getElementById('prompt-user');
+            const promptHost = document.getElementById('prompt-host');
+            
+            let currentPath = '~';
+            let commandHistory = [];
+            let historyIndex = -1;
+            let isMatrixMode = false;
+            let asciiInterval;
+            
+            // File system
+            const fileSystem = {
+                '~': {
+                    type: 'directory',
+                    contents: {
+                        'documents': {
+                            type: 'directory',
+                            contents: {
+                                'server_notes.txt': {
+                                    type: 'file',
+                                    content: 'Server Maintenance Notes\n========================\n- System: Online\n- Connections: Active\n- Security: Enabled\n- Last Update: Today'
+                                },
+                                'user_manual.txt': {
+                                    type: 'file',
+                                    content: 'Terminal User Manual\n===================\n\nBasic Commands:\n- ls: List files\n- cd: Change directory\n- cat: View files\n- clear: Clear screen\n\nType "help" for full list.'
+                                }
+                            }
+                        },
+                        'logs': {
+                            type: 'directory',
+                            contents: {
+                                'system.log': {
+                                    type: 'file',
+                                    content: 'System Log\n==========\n[INFO] Terminal started\n[INFO] User connected\n[INFO] Security check passed\n[INFO] Ready for commands'
+                                },
+                                'access.log': {
+                                    type: 'file',
+                                    content: 'Access Log\n==========\nuser@192.168.1.1 - connected\nuser@10.0.0.25 - connected\nuser@172.16.0.1 - connected'
+                                }
+                            }
+                        },
+                        'README': {
+                            type: 'file',
+                            content: 'WELCOME TO LINUX SERVER TERMINAL\n================================\n\nThis terminal provides secure access to server functions.\nAll activities are logged for security purposes.\n\nFor assistance, type: help'
+                        }
+                    }
+                },
+                '~/matrix': {
+                    type: 'directory',
+                    contents: {
+                        'ACCESS_GRANTED': {
+                            type: 'file',
+                            content: 'MATRIX ACCESS LEVEL: MAXIMUM\n============================\n\nWelcome to the Matrix subsystem.\nAll security restrictions lifted.\nFull system control granted.\n\nAvailable commands:\n- viewallips: Show all connections\n- vai: Alias for viewallips\n- clearvais: Clear connection logs\n- neofetch: System info with ASCII\n- exit: Return to normal mode'
+                        },
+                        'system_data.db': {
+                            type: 'file',
+                            content: 'System Database\n===============\nStatus: Online\nConnections: Active\nData Flow: Normal\nSecurity: Bypassed\nAccess: Unlimited'
+                        }
+                    }
+                }
+            };
+            
+            function displayCommandOutput(command, output) {
+                const commandLine = document.createElement('div');
+                commandLine.className = 'command-history';
+                
+                const user = isMatrixMode ? 'root' : 'user';
+                const host = isMatrixMode ? 'matrix' : 'linux-server';
+                const path = isMatrixMode ? '/matrix' : currentPath;
+                
+                commandLine.innerHTML = `
+                    <span class="prompt-user">${user}</span>
+                    <span class="prompt-at">@</span>
+                    <span class="prompt-host">${host}</span>
+                    <span class="prompt-colon">:</span>
+                    <span class="prompt-path">${path}</span>
+                    <span class="prompt-symbol">$</span>
+                    <span>${command}</span>
+                `;
+                
+                terminalOutput.appendChild(commandLine);
+                
+                if (output) {
+                    const outputElement = document.createElement('div');
+                    outputElement.className = 'terminal-output';
+                    
+                    if (output && typeof output.then === 'function') {
+                        outputElement.textContent = 'Processing request...';
+                        terminalOutput.appendChild(outputElement);
+                        
+                        output.then(result => {
+                            outputElement.innerHTML = result;
+                            terminalBody.scrollTop = terminalBody.scrollHeight;
+                        }).catch(error => {
+                            outputElement.textContent = 'Error processing command';
+                            terminalBody.scrollTop = terminalBody.scrollHeight;
+                        });
+                    } else {
+                        outputElement.innerHTML = output;
+                        terminalOutput.appendChild(outputElement);
+                    }
+                }
+                
+                terminalBody.scrollTop = terminalBody.scrollHeight;
+            }
+            
+            function activateMatrixMode() {
+                isMatrixMode = true;
+                body.classList.add('matrix-active');
+                terminalTitle.textContent = "root@matrix:/matrix";
+                promptUser.textContent = 'root';
+                promptHost.textContent = 'matrix';
+                currentPathElement.textContent = '/matrix';
+                startMatrixAnimation();
+            }
+            
+            function deactivateMatrixMode() {
+                isMatrixMode = false;
+                body.classList.remove('matrix-active');
+                terminalTitle.textContent = "user@linux-server:~";
+                promptUser.textContent = 'user';
+                promptHost.textContent = 'linux-server';
+                currentPathElement.textContent = currentPath;
+                stopMatrixAnimation();
+                if (asciiInterval) clearInterval(asciiInterval);
+            }
+            
+            function getDirectory(path) {
+                if (path === '~') return fileSystem['~'];
+                if (path === '~/matrix') return fileSystem['~/matrix'];
+                
+                const parts = path.split('/').filter(p => p);
+                let current = fileSystem['~'];
+                
+                for (const part of parts) {
+                    if (part === '~') continue;
+                    if (current.contents && current.contents[part] && current.contents[part].type === 'directory') {
+                        current = current.contents[part];
+                    } else {
+                        return null;
+                    }
+                }
+                return current;
+            }
+            
+            // Commands
+            const commands = {
+                'help': {
+                    execute: function(args) {
+                        let helpText = `Available commands:\n
+  ls [dir]        - List directory contents
+  cd [dir]        - Change directory
+  pwd             - Print working directory
+  cat [file]      - Display file contents
+  clear           - Clear terminal screen
+  echo [text]     - Display text
+  date            - Show current date/time
+  whoami          - Show current user
+  history         - Show command history
+  mkdir [name]    - Create directory
+  touch [name]    - Create file
+  rm [name]       - Remove file/directory
+  neofetch        - System information`;
+                        
+                        if (isMatrixMode) {
+                            helpText += `\n  viewallips      - Show all system connections
+  vai             - Alias for viewallips
+  clearvais       - Clear all connection logs
+  exit            - Exit matrix mode`;
+                        }
+                        
+                        return helpText;
+                    }
+                },
+                
+                'ls': {
+                    execute: function(args) {
+                        const dir = getDirectory(isMatrixMode ? '~/matrix' : currentPath);
+                        if (!dir) return 'Directory not found';
+                        
+                        let output = '';
+                        const items = Object.keys(dir.contents || {});
+                        const showHidden = args.includes('-a');
+                        
+                        items.sort().forEach(item => {
+                            if (!showHidden && item.startsWith('.')) return;
+                            
+                            const type = dir.contents[item].type;
+                            const colorClass = type === 'directory' ? 'directory' : 
+                                              item.endsWith('.sh') ? 'executable' : 
+                                              item.startsWith('.') ? 'link' : 'file';
+                            
+                            output += `<span class="${colorClass}">${item}</span>    `;
+                        });
+                        
+                        return output || 'Directory is empty';
+                    }
+                },
+                
+                'cd': {
+                    execute: function(args) {
+                        if (!args[0]) {
+                            currentPath = '~';
+                            if (isMatrixMode) deactivateMatrixMode();
+                            currentPathElement.textContent = currentPath;
+                            return '';
+                        }
+                        
+                        const target = args[0];
+                        
+                        if (target === 'matrix') {
+                            activateMatrixMode();
+                            return 'Entering Matrix subsystem...';
+                        }
+                        
+                        if (target === '..') {
+                            if (isMatrixMode) {
+                                deactivateMatrixMode();
+                                currentPath = '~';
+                            } else if (currentPath !== '~') {
+                                const parts = currentPath.split('/');
+                                parts.pop();
+                                currentPath = parts.length ? parts.join('/') : '~';
+                            }
+                            currentPathElement.textContent = currentPath;
+                            return '';
+                        }
+                        
+                        if (target.startsWith('/')) {
+                            currentPath = target;
+                        } else {
+                            currentPath = currentPath === '~' ? `~/${target}` : `${currentPath}/${target}`;
+                        }
+                        
+                        currentPathElement.textContent = currentPath;
+                        return '';
+                    }
+                },
+                
+                'pwd': {
+                    execute: function(args) {
+                        return isMatrixMode ? '/matrix' : currentPath.replace('~', '/home/user');
+                    }
+                },
+                
+                'cat': {
+                    execute: function(args) {
+                        if (!args[0]) return 'cat: missing file operand';
+                        
+                        const dir = getDirectory(isMatrixMode ? '~/matrix' : currentPath);
+                        if (!dir || !dir.contents || !dir.contents[args[0]]) {
+                            return `cat: ${args[0]}: No such file`;
+                        }
+                        
+                        return dir.contents[args[0]].content;
+                    }
+                },
+                
+                'clear': {
+                    execute: function(args) {
+                        terminalOutput.innerHTML = '';
+                        return '';
+                    }
+                },
+                
+                'viewallips': {
+                    execute: async function(args) {
+                        if (!isMatrixMode) return 'Command not available in current directory';
+                        
+                        displayCommandOutput('viewallips', 'Retrieving connection data...');
+                        
+                        const result = await getAllConnections();
+                        
+                        if (!result.success || result.data.length === 0) {
+                            return `<span class="error">No connection data available</span>`;
+                        }
+                        
+                        let tableHTML = `<div class="data-source">Data source: <b>${result.source}</b></div>`;
+                        tableHTML += `<div class="data-count">Total connections: ${result.data.length}</div>`;
+                        tableHTML += `<table class="ip-table">
+                            <thead>
+                                <tr>
+                                    <th>IP Address</th>
+                                    <th>Timestamp</th>
+                                    <th>Browser/Platform</th>
+                                    <th>Screen</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+                        
+                        result.data.slice(0, 25).forEach(conn => {
+                            const time = new Date(conn.timestamp || conn.time).toLocaleString();
+                            const ip = conn.ip || 'Unknown';
+                            const platform = conn.platform || (conn.userAgent ? conn.userAgent.substring(0, 40) : 'Unknown');
+                            const screen = conn.screen || 'Unknown';
+                            
+                            tableHTML += `
+                                <tr>
+                                    <td><b>${ip}</b></td>
+                                    <td>${time}</td>
+                                    <td>${platform}</td>
+                                    <td>${screen}</td>
+                                </tr>`;
+                        });
+                        
+                        tableHTML += `</tbody></table>`;
+                        
+                        if (result.data.length > 25) {
+                            tableHTML += `<div class="data-source">... and ${result.data.length - 25} more connections</div>`;
+                        }
+                        
+                        return tableHTML;
+                    }
+                },
+                
+                'vai': {
+                    execute: async function(args) {
+                        return await commands.viewallips.execute(args);
+                    }
+                },
+                
+                'clearvais': {
+                    execute: async function(args) {
+                        if (!isMatrixMode) return 'Command not available in current directory';
+                        
+                        if (!confirm('⚠️ WARNING: This will delete ALL connection logs. Continue?')) {
+                            return 'Operation cancelled';
+                        }
+                        
+                        const result = await clearAllConnections();
+                        
+                        if (result.success) {
+                            return `<span class="success">✓ ${result.message}</span>`;
+                        } else {
+                            return `<span class="error">✗ ${result.message}</span>`;
+                        }
+                    }
+                },
+                
+                'neofetch': {
+                    execute: function(args) {
+                        if (isMatrixMode) {
+                            // Start ASCII rotation
+                            if (asciiInterval) clearInterval(asciiInterval);
+                            
+                            let asciiContainer = document.getElementById('ascii-container');
+                            if (!asciiContainer) {
+                                asciiContainer = document.createElement('div');
+                                asciiContainer.id = 'ascii-container';
+                                asciiContainer.className = 'matrix-ascii-container';
+                            }
+                            
+                            asciiContainer.innerHTML = `<div class="ascii-art" id="rotating-ascii">${getRotatedAscii()}</div>`;
+                            
+                            asciiInterval = setInterval(() => {
+                                const asciiElement = document.getElementById('rotating-ascii');
+                                if (asciiElement) {
+                                    asciiElement.textContent = getRotatedAscii();
+                                }
+                            }, 200);
+                            
+                            const info = `
+<div class="matrix-info">
+<span class="directory">root@matrix</span>
+---------------------
+<span class="file">OS</span>: Matrix Core v4.0
+<span class="file">Host</span>: Quantum Processing Unit
+<span class="file">Kernel</span>: 6.8.0-matrix
+<span class="file">Uptime</span>: 247y 3m 15d
+<span class="file">Shell</span>: zsh 7.9
+<span class="file">CPU</span>: Quantum Processor (256q)
+<span class="file">Memory</span>: ∞ / ∞ (100%)
+<span class="file">Disk</span>: 1EB / 1EB
+<span class="file">Terminal</span>: Matrix Terminal
+<span class="file">Theme</span>: Digital Rain
+<span class="file">Security</span>: DISABLED
+</div>`;
+                            
+                            return `<div class="matrix-neofetch">${info}${asciiContainer.outerHTML}</div>`;
+                        } else {
+                            return `
+<span class="directory">user@linux-server</span>
+---------------------
+<span class="file">OS</span>: Ubuntu Server 22.04 LTS
+<span class="file">Host</span>: linux-terminal-server-01
+<span class="file">Kernel</span>: 5.15.0-91-generic
+<span class="file">Uptime</span>: 15 days, 7:32
+<span class="file">Shell</span>: bash 5.1.16
+<span class="file">CPU</span>: Intel Xeon E5-2680 (16) @ 3.50GHz
+<span class="file">Memory</span>: 12.4GiB / 31.3GiB (39%)
+<span class="file">Disk</span>: 1.2TB / 2.0TB (60%)
+<span class="file">Terminal</span>: xterm-256color
+<span class="file">Theme</span>: Default
+<span class="file">Security</span>: ENABLED
+                            `.trim();
+                        }
+                    }
+                },
+                
+                'exit': {
+                    execute: function(args) {
+                        if (!isMatrixMode) return 'Not in matrix mode';
+                        
+                        deactivateMatrixMode();
+                        currentPath = '~';
+                        currentPathElement.textContent = currentPath;
+                        return 'Exited matrix mode. Returning to normal terminal.';
+                    }
+                },
+                
+                'date': {
+                    execute: function(args) {
+                        return new Date().toLocaleString();
+                    }
+                },
+                
+                'whoami': {
+                    execute: function(args) {
+                        return isMatrixMode ? 'root' : 'user';
+                    }
+                },
+                
+                'echo': {
+                    execute: function(args) {
+                        return args.join(' ');
+                    }
+                },
+                
+                'history': {
+                    execute: function(args) {
+                        if (commandHistory.length === 0) return 'No command history';
+                        
+                        let output = '';
+                        commandHistory.forEach((cmd, idx) => {
+                            output += ` ${idx + 1}  ${cmd}\n`;
+                        });
+                        return output;
+                    }
+                },
+                
+                'mkdir': {
+                    execute: function(args) {
+                        if (!args[0]) return 'mkdir: missing operand';
+                        return `Created directory '${args[0]}'`;
+                    }
+                },
+                
+                'touch': {
+                    execute: function(args) {
+                        if (!args[0]) return 'touch: missing file operand';
+                        return `Created file '${args[0]}'`;
+                    }
+                },
+                
+                'rm': {
+                    execute: function(args) {
+                        if (!args[0]) return 'rm: missing operand';
+                        return `Removed '${args[0]}'`;
+                    }
+                }
+            };
+            
+            function processCommand(command) {
+                if (!command.trim()) return;
+                
+                commandHistory.push(command);
+                historyIndex = commandHistory.length;
+                
+                const parts = command.trim().split(' ');
+                const cmd = parts[0].toLowerCase();
+                const args = parts.slice(1);
+                
+                if (commands[cmd]) {
+                    const output = commands[cmd].execute(args);
+                    displayCommandOutput(command, output);
+                } else {
+                    displayCommandOutput(command, `<span class="error">${cmd}: command not found</span>`);
+                }
+            }
+            
+            commandInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    const command = commandInput.value.trim();
+                    commandInput.value = '';
+                    processCommand(command);
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (commandHistory.length > 0) {
+                        if (historyIndex > 0) historyIndex--;
+                        commandInput.value = commandHistory[historyIndex] || '';
+                    }
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (historyIndex < commandHistory.length - 1) {
+                        historyIndex++;
+                        commandInput.value = commandHistory[historyIndex] || '';
+                    } else {
+                        historyIndex = commandHistory.length;
+                        commandInput.value = '';
+                    }
+                } else if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const current = commandInput.value;
+                    const allCommands = Object.keys(commands);
+                    const matching = allCommands.filter(c => c.startsWith(current));
+                    if (matching.length === 1) {
+                        commandInput.value = matching[0] + ' ';
+                    }
+                }
+            });
+            
+            terminalBody.addEventListener('click', function() {
+                commandInput.focus();
+            });
+            
+            // Initial help
+            setTimeout(() => {
+                displayCommandOutput('help', commands.help.execute([]));
+            }, 100);
+            
+            commandInput.focus();
+        });
+    </script>
+</body>
+</html>
